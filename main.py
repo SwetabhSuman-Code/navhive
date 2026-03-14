@@ -63,16 +63,9 @@ for step in range(STEPS):
             NOISE_AOA
         )
 
-        hybrid_est = adaptive_fusion(
-            dist_est,
-            aoa_est,
-            NOISE_DISTANCE,
-            NOISE_AOA
-        )
-
-        # EKF Prediction + Update
+        # EKF Prediction + Update using ONLY AOA
         node.kf.predict(acceleration)
-        filtered_est = node.kf.update(hybrid_est)
+        filtered_est = node.kf.update(aoa_est)
 
         node.filtered_history.append(filtered_est)
 # =========================================================

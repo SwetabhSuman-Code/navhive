@@ -10,4 +10,5 @@ class Anchor:
         dx = 0.15 * np.sin(0.05 * step)
         dy = 0.15 * np.cos(0.05 * step)
 
-        self.position += np.array([dx, dy])
+        # Anchors are fixed
+        # self.position += np.array([dx, dy])
