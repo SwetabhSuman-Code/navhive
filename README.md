@@ -95,16 +95,16 @@ Before trilateration, `anchor_health.py` filters out anchors with unreliable lin
 
 ## Node Motion Model
 
-Each `HiveNode` simulates sinusoidal acceleration to produce a smoothly curving trajectory:
+All `HiveNode` instances are **static** — their positions do not change over time. The `move()` method returns a zero acceleration vector `[0, 0]`, which feeds directly into the EKF predict step (effectively a constant-position model).
 
 ```python
-ax = 0.003 * sin(0.1 * step)
-ay = 0.003 * cos(0.1 * step)
-velocity += acceleration
-true_position += velocity
+# HiveNode.move() — static configuration
+def move(self, step):
+    # Static node — position does not change
+    return np.array([0.0, 0.0])
 ```
 
-Starting velocity is `[0.1, 0.05]` m/step. The node also returns its `acceleration` vector which feeds directly into the EKF predict step.
+This models real-world scenarios such as stationary IoT sensors, fixed asset tags, or test beacons being localised against a set of known anchors.
 
 ---
 
@@ -117,12 +117,15 @@ navhive/
 ├── simulator.py            # NavHiveSimulator class — step-by-step engine
 ├── hive_manager.py         # NavHive class — consolidated run + evaluate
 ├── experiment_runner.py    # Noise sweep experiment (RMSE vs. noise curve)
+├── comparison_plot.py      # Side-by-side algorithm stage comparison plot
+├── generate_results.py     # Pre-generates all result figures → results/
 ├── dashboard.py            # Streamlit real-time interactive dashboard
 ├── config.py               # Global parameters
+├── requirements.txt        # Python dependency list
 │
 ├── models/
-│   ├── anchor.py           # Fixed reference station (motion code is disabled)
-│   └── hive_node.py        # Moving node with own DynamicKalman tracker
+│   ├── anchor.py           # Fixed reference station
+│   └── hive_node.py        # Static node with DynamicKalman tracker
 │
 ├── engine/
 │   ├── measurement.py      # Gaussian noise injection on true distances
@@ -131,10 +134,19 @@ navhive/
 │   ├── adaptive_fusion.py  # Inverse-noise weighted blending
 │   ├── anchor_health.py    # LOS/distance threshold health check
 │   ├── kalman.py           # DynamicKalman: 4-state EKF with IMU predict
-│   └── fusion.py           # (Legacy stub)
+│   └── fusion.py           # Static-weight fusion (baseline / legacy)
 │
-└── evaluation/
-    └── metrics.py          # RMSE computation utility
+├── evaluation/
+│   └── metrics.py          # RMSE and MAE computation utilities
+│
+├── tests/
+│   ├── test_trilateration.py   # Unit tests for trilateration solver
+│   └── test_metrics.py         # Unit tests for RMSE and MAE
+│
+└── results/                # Pre-generated output figures (PNG)
+    ├── 01_trajectory_all_nodes.png
+    ├── 02_noise_vs_rmse.png
+    └── 03_comparison_stages.png
 ```
 
 ---
@@ -166,10 +178,12 @@ navhive/
 
 | Script | Class / Mode | Algo Pipeline | Output |
 |---|---|---|---|
-| `main.py` | Procedural | Trilateration → AoA → **EKF on AoA only** | Matplotlib static plot |
+| `main.py` | Procedural | Trilateration → AoA → EKF | Matplotlib static plot + RMSE & MAE |
 | `simulator.py` | `NavHiveSimulator` | Full pipeline with Fusion | Step-by-step positions dict |
-| `hive_manager.py` | `NavHive` | Full pipeline with Fusion | Console RMSE report |
+| `hive_manager.py` | `NavHive` | Full pipeline with Fusion | Console RMSE & MAE report |
 | `experiment_runner.py` | Uses `NavHiveSimulator` | Full pipeline | Noise vs. RMSE curve (Matplotlib) |
+| `comparison_plot.py` | Standalone | All 3 stages side-by-side | 3-panel comparison PNG |
+| `generate_results.py` | Standalone | Full pipeline | Saves all plots to `results/` |
 | `dashboard.py` | Streamlit | Full pipeline | Live browser dashboard |
 
 > **Note:** `main.py` feeds only the AoA estimate into the EKF (no fusion). `simulator.py`, `hive_manager.py`, and `experiment_runner.py` use the full Adaptive Fusion → EKF pipeline as documented above.
@@ -220,13 +234,17 @@ for step in range(50):
 
 ---
 
-## 📊 Evaluation Metric
+## 📊 Evaluation Metrics
 
-**Root Mean Square Error (RMSE)** is computed between the EKF-filtered path and the true path for each node:
+Two complementary metrics are computed between EKF-filtered estimates and true positions:
 
+**Root Mean Square Error (RMSE)** — penalises large deviations more heavily:
 $$\text{RMSE} = \sqrt{\frac{1}{N} \sum_{t=1}^{N} \|\hat{p}_t - p_t\|^2}$$
 
-Lower RMSE = better tracking accuracy. The `experiment_runner.py` shows how RMSE scales non-linearly with sensor noise.
+**Mean Absolute Error (MAE)** — treats all deviations equally:
+$$\text{MAE} = \frac{1}{N} \sum_{t=1}^{N} \|\hat{p}_t - p_t\|$$
+
+Lower values = better localization accuracy. RMSE is more sensitive to outlier measurements; MAE gives a more robust average error. The `experiment_runner.py` shows how both metrics scale with sensor noise.
 
 ---
 
