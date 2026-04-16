@@ -26,6 +26,14 @@ NUM_NODES = 5
 nodes = [HiveNode(i, [2+i, 3+i]) for i in range(NUM_NODES)]
 
 
+import csv
+
+# Open CSV for logging raw inputs as requested by the professor
+raw_log_file = open("raw_sensor_inputs.csv", "w", newline="")
+raw_csv_writer = csv.writer(raw_log_file)
+# Write header for the raw inputs log
+raw_csv_writer.writerow(["Step", "NodeID", "True_X", "True_Y", "Dist_A0", "Dist_A1", "Dist_A2", "Dist_A3"])
+
 # =========================================================
 # MAIN SIMULATION LOOP
 # =========================================================
@@ -40,12 +48,21 @@ for step in range(STEPS):
         # Store true position
         node.history.append(node.true_position.copy())
 
-        # Measurements
+        # Measurements - these are the REAL INPUTS (raw sensor data)
         distances = get_noisy_distances(
             node.true_position,
             anchors,
             NOISE_DISTANCE
         )
+
+        # Log the real, unmanipulated inputs to the CSV
+        log_row = [
+            step, 
+            node.id, 
+            f"{node.true_position[0]:.4f}", 
+            f"{node.true_position[1]:.4f}"
+        ] + [f"{d:.4f}" for d in distances]
+        raw_csv_writer.writerow(log_row)
 
         healthy_indices = check_anchor_health(distances)
 
@@ -68,6 +85,8 @@ for step in range(STEPS):
         filtered_est = node.kf.update(aoa_est)
 
         node.filtered_history.append(filtered_est)
+
+raw_log_file.close()
 # =========================================================
 # EVALUATION
 # =========================================================
@@ -81,8 +100,9 @@ for node in nodes:
     rmse = compute_rmse(filtered_path, true_path[:len(filtered_path)])
     mae  = compute_mae(filtered_path,  true_path[:len(filtered_path)])
     pos  = node.true_position
+    pred_pos = np.mean(filtered_path, axis=0) # Average filtered position across simulation
     quality = "Excellent" if rmse < 1.0 else "Good" if rmse < 2.5 else "Fair" if rmse < 5.0 else "Poor"
-    results.append((node.id, pos[0], pos[1], rmse, mae, quality))
+    results.append((node.id, pos[0], pos[1], pred_pos[0], pred_pos[1], rmse, mae, quality))
 
 # --- Print bullet-point results ---
 print()
@@ -99,24 +119,26 @@ print()
 print("  [Node Results]")
 print()
 
-for nid, x, y, rmse, mae, qual in results:
-    print("   Node {}  (position: x={:.1f} m, y={:.1f} m)".format(nid, x, y))
-    print("    * RMSE    : {:.4f} m".format(rmse))
-    print("    * MAE     : {:.4f} m".format(mae))
-    print("    * Quality : {}".format(qual))
+for nid, x, y, px, py, rmse, mae, qual in results:
+    print("   Node {}".format(nid))
+    print("    * Actual Position    : x={:.2f} m, y={:.2f} m".format(x, y))
+    print("    * Predicted Position : x={:.2f} m, y={:.2f} m".format(px, py))
+    print("    * RMSE               : {:.4f} m".format(rmse))
+    print("    * MAE                : {:.4f} m".format(mae))
+    print("    * Quality            : {}".format(qual))
     print()
 
-avg_rmse = np.mean([r[3] for r in results])
-avg_mae  = np.mean([r[4] for r in results])
-best     = min(results, key=lambda r: r[3])
-worst    = max(results, key=lambda r: r[3])
+avg_rmse = np.mean([r[5] for r in results])
+avg_mae  = np.mean([r[6] for r in results])
+best     = min(results, key=lambda r: r[5])
+worst    = max(results, key=lambda r: r[5])
 
 print("-" * 50)
 print("  [Summary]")
 print("   * Average RMSE : {:.4f} m".format(avg_rmse))
 print("   * Average MAE  : {:.4f} m".format(avg_mae))
-print("   * Best Node    : Node {} (RMSE = {:.4f} m)".format(best[0], best[3]))
-print("   * Worst Node   : Node {} (RMSE = {:.4f} m)".format(worst[0], worst[3]))
+print("   * Best Node    : Node {} (RMSE = {:.4f} m)".format(best[0], best[5]))
+print("   * Worst Node   : Node {} (RMSE = {:.4f} m)".format(worst[0], worst[5]))
 print("=" * 50)
 print()
 
